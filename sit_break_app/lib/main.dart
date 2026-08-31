@@ -57,10 +57,8 @@ class _HomePageState extends State<HomePage> {
   static const int _bufferSize = 20; // ~2 ثانية عند 10hz معالجة
   static const double _stillnessThreshold = 0.35; // اضبطه حسب التجربة
 
-  DateTime? _stillSince;
-  DateTime? _movingSince;
-  static const Duration _confirmStillFor = Duration(seconds: 8);
-  static const Duration _confirmMovingFor = Duration(seconds: 5);
+  // هل الجهاز يتحرك حالياً؟ (الشرط الثاني لتشغيل المؤقت)
+  bool _isMoving = false;
 
   final FlutterLocalNotificationsPlugin _notifications =
       FlutterLocalNotificationsPlugin();
@@ -92,24 +90,26 @@ class _HomePageState extends State<HomePage> {
       priority: Priority.high,
     );
     const iosDetails = DarwinNotificationDetails();
-    const details = NotificationDetails(android: androidDetails, iOS: iosDetails);
+    const details =
+        NotificationDetails(android: androidDetails, iOS: iosDetails);
     await _notifications.show(0, title, body, details);
   }
 
   // ---------------- منطق الكشف عن الحركة ----------------
 
   void _startMonitoring() {
+    _magnitudeBuffer.clear();
+    _isMoving = false;
+
     setState(() {
       monitoring = true;
-      state = AppState.idle;
     });
-    _magnitudeBuffer.clear();
-    _stillSince = null;
-    _movingSince = null;
 
     _accelSub = accelerometerEventStream(
       samplingPeriod: SensorInterval.normalInterval,
     ).listen(_onAccelEvent);
+
+    _enterSitting();
   }
 
   void _stopMonitoring() {
@@ -120,6 +120,7 @@ class _HomePageState extends State<HomePage> {
       monitoring = false;
       state = AppState.idle;
       remaining = Duration.zero;
+      _isMoving = false;
     });
   }
 
@@ -139,68 +140,62 @@ class _HomePageState extends State<HomePage> {
     final avgVariation =
         _magnitudeBuffer.reduce((a, b) => a + b) / _magnitudeBuffer.length;
 
-    final now = DateTime.now();
-    final isStill = avgVariation < _stillnessThreshold;
-
-    if (isStill) {
-      _movingSince = null;
-      _stillSince ??= now;
-
-      if (state == AppState.idle &&
-          now.difference(_stillSince!) >= _confirmStillFor) {
-        _enterSitting();
-      }
-    } else {
-      _stillSince = null;
-      _movingSince ??= now;
-
-      if (state == AppState.sitting &&
-          now.difference(_movingSince!) >= _confirmMovingFor) {
-        _backToIdle(userGotUp: true);
-      }
+    final moving = avgVariation >= _stillnessThreshold;
+    if (moving != _isMoving) {
+      setState(() {
+        _isMoving = moving;
+      });
     }
   }
 
   // ---------------- إدارة الحالات ----------------
 
+  // مرحلة عد الجلوس: المؤقت هنا يشتغل فقط بشرطين معاً:
+  // (1) المراقبة شغالة، و(2) الجهاز يتحرك حالياً.
+  // أي شرط يختل → المؤقت يتوقف فوراً (يتجمد) لحين تحقق الشرطين من جديد.
   void _enterSitting() {
     setState(() {
       state = AppState.sitting;
       remaining = Duration(minutes: sitMinutes);
     });
-    _startCountdown(onDone: () {
-      _showNotification('وقت الاستراحة! 🧍', 'قم من مكانك وتحرك قليلاً.');
-      _enterBreak();
-    });
+    _startCountdown(
+      requireMovement: true,
+      onDone: () {
+        _showNotification('وقت الاستراحة! 🧍', 'قم من مكانك وتحرك قليلاً.');
+        _enterBreak();
+      },
+    );
   }
 
+  // مرحلة الاستراحة: تعد بشكل عادي بدون شرط حركة.
   void _enterBreak() {
     setState(() {
       state = AppState.onBreak;
       remaining = Duration(minutes: breakMinutes);
     });
-    _startCountdown(onDone: () {
-      _showNotification('انتهت الاستراحة 💺', 'يمكنك الرجوع لجلستك الآن.');
-      _backToIdle(userGotUp: false);
-    });
+    _startCountdown(
+      requireMovement: false,
+      onDone: () {
+        _showNotification('انتهت الاستراحة 💺', 'ارجع لجلستك، العد سيبدأ من جديد.');
+        if (monitoring) {
+          _enterSitting();
+        }
+      },
+    );
   }
 
-  void _backToIdle({required bool userGotUp}) {
-    _countdownTimer?.cancel();
-    setState(() {
-      state = AppState.idle;
-      remaining = Duration.zero;
-    });
-    _stillSince = null;
-    _movingSince = null;
-    if (userGotUp) {
-      _showNotification('لاحظنا أنك تحركت', 'تم إيقاف عداد الجلوس مؤقتاً.');
-    }
-  }
-
-  void _startCountdown({required VoidCallback onDone}) {
+  void _startCountdown({
+    required VoidCallback onDone,
+    required bool requireMovement,
+  }) {
     _countdownTimer?.cancel();
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+      // الشرطان: المراقبة شغالة + (إذا مطلوب) الجهاز يتحرك.
+      final conditionsMet = monitoring && (!requireMovement || _isMoving);
+      if (!conditionsMet) {
+        // نتجمد هذي الثانية بدون إنقاص العداد.
+        return;
+      }
       setState(() {
         if (remaining.inSeconds <= 1) {
           t.cancel();
@@ -223,9 +218,9 @@ class _HomePageState extends State<HomePage> {
   String _stateLabel() {
     switch (state) {
       case AppState.idle:
-        return monitoring ? 'بانتظار الثبات لبدء العد...' : 'متوقف';
+        return 'متوقف';
       case AppState.sitting:
-        return 'جالس - جاري العد';
+        return _isMoving ? 'جالس - جاري العد' : 'متوقف مؤقتاً - بانتظار الحركة';
       case AppState.onBreak:
         return 'وقت الاستراحة';
     }
@@ -297,9 +292,9 @@ class _HomePageState extends State<HomePage> {
               ),
               const SizedBox(height: 16),
               const Text(
-                'ملاحظة: الكشف يعتمد على ثبات الجهاز كمؤشر تقريبي للجلوس، '
-                'وقد لا يكون دقيقاً 100%. اترك الجوال بجانبك أثناء الجلوس '
-                'ليعمل الكشف بشكل أفضل.',
+                'ملاحظة: أثناء مرحلة الجلوس، المؤقت يعمل فقط عند تحقق '
+                'شرطين معاً: المراقبة شغالة والجهاز يتحرك. إذا صار الجوال '
+                'ثابتاً، يتجمد العداد فوراً حتى تتحرك من جديد.',
                 style: TextStyle(fontSize: 12, color: Colors.grey),
                 textAlign: TextAlign.center,
               ),
