@@ -145,14 +145,11 @@ class _HomePageState extends State<HomePage> {
     await Permission.notification.request();
   }
 
-  // 🔔 تشغيل صوت المنبه
   Future<void> _triggerAlarm(String title, String body) async {
     setState(() => _isAlarmRinging = true);
 
-    // تشغيل نغمة المنبه الافتراضية للنظام أو رابط MP3 مباشر
     try {
       await _audioPlayer.setReleaseMode(ReleaseMode.loop);
-      // رابط صوت منبه جاهز لتجربته، يمكنك تغييره بأي رابط أو ملف asset محلي
       await _audioPlayer.play(
         UrlSource('https://actions.google.com/sounds/v1/alarms/beep_short.ogg'),
       );
@@ -160,7 +157,6 @@ class _HomePageState extends State<HomePage> {
       debugPrint("خطأ في تشغيل الصوت: $e");
     }
 
-    // إظهار الإشعار المرئي
     const androidDetails = AndroidNotificationDetails(
       'sit_break_channel',
       'Sit & Break Reminders',
@@ -177,7 +173,6 @@ class _HomePageState extends State<HomePage> {
     await _notifications.show(0, title, body, notificationDetails);
   }
 
-  // ⏹️ إيقاف صوت المنبه
   Future<void> _stopAlarmSound() async {
     await _audioPlayer.stop();
     setState(() => _isAlarmRinging = false);
