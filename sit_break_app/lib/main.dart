@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:audioplayers/audioplayers.dart';
 
 void main() => runApp(const SitBreakApp());
 
@@ -18,7 +17,6 @@ class AppLanguageHelper {
       'breakDuration': 'مدة الاستراحة (دقيقة)',
       'start': 'إبدأ المراقبة',
       'stop': 'إيقاف المراقبة',
-      'stopAlarm': 'إيقاف المنبه 🔔',
       'stateIdle': 'متوقف',
       'stateSittingMoving': 'جالس - جاري العد',
       'stateSittingPaused': 'متوقف مؤقتاً - بانتظار الحركة',
@@ -28,8 +26,6 @@ class AppLanguageHelper {
       'notifyBreakBody': 'قم من مكانك وتحرك قليلاً',
       'notifyBackTitle': 'انتهت الاستراحة!',
       'notifyBackBody': 'ارجع لجلستك، سيبدأ العد من جديد',
-      'moving': 'بتحرك',
-      'still': 'ثابت',
     },
     AppLanguage.en: {
       'title': 'Sit & Break Reminder',
@@ -37,9 +33,8 @@ class AppLanguageHelper {
       'breakDuration': 'Break duration (minutes)',
       'start': 'Start Monitoring',
       'stop': 'Stop Monitoring',
-      'stopAlarm': 'Stop Alarm 🔔',
       'stateIdle': 'Stopped',
-      'stateSittingCounting': 'Sitting - Counting',
+      'stateSittingMoving': 'Sitting - Counting',
       'stateSittingPaused': 'Paused - waiting for movement',
       'stateBreak': 'Break Time',
       'note': 'Note: While sitting, the timer only runs when the device is moving.',
@@ -47,8 +42,6 @@ class AppLanguageHelper {
       'notifyBreakBody': 'Get up and move a little.',
       'notifyBackTitle': 'Break finished!',
       'notifyBackBody': 'Back to your seat, the count restarts.',
-      'moving': 'Moving',
-      'still': 'Still',
     },
     AppLanguage.fr: {
       'title': 'Rappel Assise & Pause',
@@ -56,7 +49,6 @@ class AppLanguageHelper {
       'breakDuration': 'Durée de pause (minutes)',
       'start': 'Démarrer',
       'stop': 'Arrêter',
-      'stopAlarm': 'Arrêter l\'alarme 🔔',
       'stateIdle': 'Arrêté',
       'stateSittingMoving': 'Assis - Décompte en cours',
       'stateSittingPaused': 'En pause - en attente de mouvement',
@@ -66,8 +58,6 @@ class AppLanguageHelper {
       'notifyBreakBody': 'Levez-vous et bougez un peu.',
       'notifyBackTitle': 'Pause terminée !',
       'notifyBackBody': 'Retournez à votre place, le compte redémarre.',
-      'moving': 'En mouvement',
-      'still': 'Immobile',
     },
   };
 
@@ -113,7 +103,6 @@ class _HomePageState extends State<HomePage> {
 
   AppState _state = AppState.idle;
   bool _isMonitoring = false;
-  bool _isAlarmRinging = false;
   Duration _remaining = Duration.zero;
   Duration _phaseTotal = Duration.zero;
   Timer? _countdownTimer;
@@ -126,7 +115,6 @@ class _HomePageState extends State<HomePage> {
 
   final FlutterLocalNotificationsPlugin _notifications =
       FlutterLocalNotificationsPlugin();
-  final AudioPlayer _audioPlayer = AudioPlayer();
 
   @override
   void initState() {
@@ -145,37 +133,21 @@ class _HomePageState extends State<HomePage> {
     await Permission.notification.request();
   }
 
-  Future<void> _triggerAlarm(String title, String body) async {
-    setState(() => _isAlarmRinging = true);
-
-    try {
-      await _audioPlayer.setReleaseMode(ReleaseMode.loop);
-      await _audioPlayer.play(
-        UrlSource('https://actions.google.com/sounds/v1/alarms/beep_short.ogg'),
-      );
-    } catch (e) {
-      debugPrint("خطأ في تشغيل الصوت: $e");
-    }
-
+  Future<void> _showNotification(String title, String body) async {
     const androidDetails = AndroidNotificationDetails(
       'sit_break_channel',
       'Sit & Break Reminders',
       importance: Importance.max,
       priority: Priority.high,
-      audioAttributesUsage: AudioAttributesUsage.alarm,
+      playSound: true,
     );
-    const iosDetails = DarwinNotificationDetails();
+    const iosDetails = DarwinNotificationDetails(playSound: true);
     const notificationDetails = NotificationDetails(
       android: androidDetails,
       iOS: iosDetails,
     );
 
     await _notifications.show(0, title, body, notificationDetails);
-  }
-
-  Future<void> _stopAlarmSound() async {
-    await _audioPlayer.stop();
-    setState(() => _isAlarmRinging = false);
   }
 
   void _startMonitoring() {
@@ -214,7 +186,6 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _stopMonitoring() {
-    _stopAlarmSound();
     _accelSub?.cancel();
     _accelSub = null;
     _countdownTimer?.cancel();
@@ -237,7 +208,7 @@ class _HomePageState extends State<HomePage> {
     _startCountdown(
       requireMovement: true,
       onDone: () {
-        _triggerAlarm(
+        _showNotification(
           AppLanguageHelper.t('notifyBreakTitle', lang: _lang),
           AppLanguageHelper.t('notifyBreakBody', lang: _lang),
         );
@@ -256,7 +227,7 @@ class _HomePageState extends State<HomePage> {
     _startCountdown(
       requireMovement: false,
       onDone: () {
-        _triggerAlarm(
+        _showNotification(
           AppLanguageHelper.t('notifyBackTitle', lang: _lang),
           AppLanguageHelper.t('notifyBackBody', lang: _lang),
         );
@@ -289,7 +260,6 @@ class _HomePageState extends State<HomePage> {
 
   @override
   void dispose() {
-    _audioPlayer.dispose();
     _accelSub?.cancel();
     _countdownTimer?.cancel();
     super.dispose();
@@ -449,22 +419,6 @@ class _HomePageState extends State<HomePage> {
                   ),
                 ),
                 const SizedBox(height: 28),
-                if (_isAlarmRinging) ...[
-                  ElevatedButton.icon(
-                    onPressed: _stopAlarmSound,
-                    icon: const Icon(Icons.notifications_off_rounded),
-                    label: Text(AppLanguageHelper.t('stopAlarm', lang: _lang)),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                ],
                 ElevatedButton.icon(
                   onPressed:
                       _isMonitoring ? _stopMonitoring : _startMonitoring,
