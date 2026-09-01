@@ -11,13 +11,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.24.0'
           channel: 'stable'
 
-      - name: Generate missing platform files
-        run: flutter create --platforms=android .
+      - name: Create Android platform files if missing
+        run: |
+          if [ ! -d "android" ]; then
+            flutter create --platforms=android .
+          fi
+        working-directory: sit_break_app
+
+      - name: Fix Kotlin Version
+        run: |
+          sed -i 's/id "org.jetbrains.kotlin.android" version "[^"]*"/id "org.jetbrains.kotlin.android" version "1.9.24"/' android/settings.gradle || true
         working-directory: sit_break_app
 
       - name: Get dependencies
