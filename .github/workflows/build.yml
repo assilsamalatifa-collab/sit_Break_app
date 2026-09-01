@@ -1,13 +1,9 @@
-Name: Build APK
+name: Build APK
 
 on:
   push:
     branches: [ main, master ]
   workflow_dispatch: {}
-
-defaults:
-  run:
-    working-directory: sit_break_app
 
 jobs:
   build:
@@ -22,16 +18,18 @@ jobs:
 
       - name: Generate missing platform files
         run: flutter create --platforms=android .
+        working-directory: sit_break_app
 
       - name: Get dependencies
         run: flutter pub get
+        working-directory: sit_break_app
 
       - name: Build APK
         run: flutter build apk --release
+        working-directory: sit_break_app
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: sit-break-app-apk
           path: sit_break_app/build/app/outputs/flutter-apk/app-release.apk
-          include-hidden-files: true
