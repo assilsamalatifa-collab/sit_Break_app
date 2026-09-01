@@ -1,74 +1,12 @@
 import 'dart:async';
-import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sensors_plus/sensors_plus.dart';
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:permission_handler/permission_handler.dart';
+import 'package:audioplayers/audioplayers.dart';
 
-void main() => runApp(const SitBreakApp());
-
-enum AppLanguage { ar, en, fr }
-
-class AppLanguageHelper {
-  static const Map<AppLanguage, Map<String, String>> _strings = {
-    AppLanguage.ar: {
-      'title': 'تذكير الجلوس والاستراحة',
-      'sitDuration': 'مدة الجلوس (دقيقة)',
-      'breakDuration': 'مدة الاستراحة (دقيقة)',
-      'start': 'إبدأ المراقبة',
-      'stop': 'إيقاف المراقبة',
-      'stateIdle': 'متوقف',
-      'stateSittingMoving': 'جالس - جاري العد',
-      'stateSittingPaused': 'متوقف مؤقتاً - بانتظار الحركة',
-      'stateBreak': 'الاستراحة',
-      'note': 'ملاحظة: أثناء الجلوس، العداد يعمل فقط عند تحرك الجهاز ولو بحركة بسيطة.',
-      'notifyBreakTitle': 'وقت الاستراحة!',
-      'notifyBreakBody': 'قم من مكانك وتحرك قليلاً',
-      'notifyBackTitle': 'انتهت الاستراحة!',
-      'notifyBackBody': 'ارجع لجلستك، سيبدأ العد من جديد',
-    },
-    AppLanguage.en: {
-      'title': 'Sit & Break Reminder',
-      'sitDuration': 'Sit duration (minutes)',
-      'breakDuration': 'Break duration (minutes)',
-      'start': 'Start Monitoring',
-      'stop': 'Stop Monitoring',
-      'stateIdle': 'Stopped',
-      'stateSittingMoving': 'Sitting - Counting',
-      'stateSittingPaused': 'Paused - waiting for movement',
-      'stateBreak': 'Break Time',
-      'note': 'Note: While sitting, the timer only runs when the device is moving.',
-      'notifyBreakTitle': 'Break time!',
-      'notifyBreakBody': 'Get up and move a little.',
-      'notifyBackTitle': 'Break finished!',
-      'notifyBackBody': 'Back to your seat, the count restarts.',
-    },
-    AppLanguage.fr: {
-      'title': 'Rappel Assise & Pause',
-      'sitDuration': 'Durée assise (minutes)',
-      'breakDuration': 'Durée de pause (minutes)',
-      'start': 'Démarrer',
-      'stop': 'Arrêter',
-      'stateIdle': 'Arrêté',
-      'stateSittingMoving': 'Assis - Décompte en cours',
-      'stateSittingPaused': 'En pause - en attente de mouvement',
-      'stateBreak': 'Temps de pause',
-      'note': 'Remarque : En position assise, le minuteur ne fonctionne que si l\'appareil bouge.',
-      'notifyBreakTitle': 'Pause !',
-      'notifyBreakBody': 'Levez-vous et bougez un peu.',
-      'notifyBackTitle': 'Pause terminée !',
-      'notifyBackBody': 'Retournez à votre place, le compte redémarre.',
-    },
-  };
-
-  static String t(String key, {AppLanguage lang = AppLanguage.ar}) {
-    return _strings[lang]?[key] ?? key;
-  }
-
-  static bool isRtl(AppLanguage lang) => lang == AppLanguage.ar;
+void main() {
+  runApp(const SitBreakApp());
 }
-
-enum AppState { idle, sitting, breakTime }
 
 class SitBreakApp extends StatelessWidget {
   const SitBreakApp({super.key});
@@ -76,461 +14,275 @@ class SitBreakApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Sit & Break Reminder',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorSchemeSeed: const Color(0xFF1283A8),
-        useMaterial3: true,
-        scaffoldBackgroundColor: const Color(0xFFF4FFBA),
-        fontFamily: 'Tajawal',
-      ),
-      home: const HomePage(),
+      title: 'Sit & Break',
+      theme: ThemeData(primarySwatch: Colors.teal),
+      home: const LanguageScreen(),
     );
   }
 }
 
-class HomePage extends StatefulWidget {
-  const HomePage({super.key});
+// ================= 1. شاشة اختيار اللغة =================
+class LanguageScreen extends StatelessWidget {
+  const LanguageScreen({super.key});
 
   @override
-  State<HomePage> createState() => _HomePageState();
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text('Select Your Language / اختر اللغة',
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                  textAlign: TextAlign.center),
+              const SizedBox(height: 40),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(minimumSize: const Size.fromHeight(50)),
+                onPressed: () => _setLanguage(context, 'ar'),
+                child: const Text('العربية', style: TextStyle(fontSize: 18)),
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(minimumSize: const Size.fromHeight(50)),
+                onPressed: () => _setLanguage(context, 'en'),
+                child: const Text('English', style: TextStyle(fontSize: 18)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _setLanguage(BuildContext context, String lang) async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setString('lang', lang);
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (context) => const SettingsScreen()),
+    );
+  }
 }
 
-class _HomePageState extends State<HomePage> {
-  AppLanguage _lang = AppLanguage.ar;
-  int sitMinutes = 30;
-  int breakMinutes = 5;
+// ================= 2. شاشة الإعدادات =================
+class SettingsScreen extends StatefulWidget {
+  const SettingsScreen({super.key});
 
-  AppState _state = AppState.idle;
-  bool _isMonitoring = false;
-  Duration _remaining = Duration.zero;
-  Duration _phaseTotal = Duration.zero;
-  Timer? _countdownTimer;
+  @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
 
-  StreamSubscription<AccelerometerEvent>? _accelSub;
-  final List<double> _magnitudeBuffer = [];
-  static const int _bufferSize = 10;
-  static const double _stillnessThreshold = 0.12;
-  bool _isMoving = false;
+class _SettingsScreenState extends State<SettingsScreen> {
+  double workMinutes = 25;
+  double breakMinutes = 5;
+  String selectedTone = 'Default Bell';
 
-  final FlutterLocalNotificationsPlugin _notifications =
-      FlutterLocalNotificationsPlugin();
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Timer Settings / الإعدادات')),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: ListView(
+          children: [
+            Text('Work Duration: ${workMinutes.toInt()} mins'),
+            Slider(
+              value: workMinutes,
+              min: 1,
+              max: 60,
+              divisions: 59,
+              label: '${workMinutes.toInt()} mins',
+              onChanged: (val) => setState(() => workMinutes = val),
+            ),
+            const Divider(),
+            Text('Break Duration: ${breakMinutes.toInt()} mins'),
+            Slider(
+              value: breakMinutes,
+              min: 1,
+              max: 30,
+              divisions: 29,
+              label: '${breakMinutes.toInt()} mins',
+              onChanged: (val) => setState(() => breakMinutes = val),
+            ),
+            const Divider(),
+            const Text('Alarm Tone / نغمة المنبه'),
+            DropdownButton<String>(
+              value: selectedTone,
+              isExpanded: true,
+              items: ['Default Bell', 'Digital Beep', 'Soft Chime']
+                  .map((tone) => DropdownMenuItem(value: tone, child: Text(tone)))
+                  .toList(),
+              onChanged: (val) => setState(() => selectedTone = val!),
+            ),
+            const SizedBox(height: 40),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                minimumSize: const Size.fromHeight(55),
+                backgroundColor: Colors.teal,
+              ),
+              onPressed: () {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => TimerScreen(
+                      workTime: workMinutes.toInt() * 60,
+                      breakTime: breakMinutes.toInt() * 60,
+                      tone: selectedTone,
+                    ),
+                  ),
+                );
+              },
+              child: const Text('Start App / بدء التطبيق',
+                  style: TextStyle(fontSize: 18, color: Colors.white)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ================= 3. شاشة المؤقت والشروط الذكية =================
+class TimerScreen extends StatefulWidget {
+  final int workTime;
+  final int breakTime;
+  final String tone;
+
+  const TimerScreen({
+    super.key,
+    required this.workTime,
+    required this.breakTime,
+    required this.tone,
+  });
+
+  @override
+  State<TimerScreen> createState() => _TimerScreenState();
+}
+
+class _TimerScreenState extends State<TimerScreen> {
+  late int remainingSeconds;
+  bool isWorking = true;
+  bool isRunning = false;
+  
+  // شروط التشغيل
+  bool isPhoneMoving = false;
+  bool isScreenActive = true; // افترضنا التشغيل الافتراضي، يمكن ربطه ب حزم الحالة
+
+  StreamSubscription? accelerometerSub;
+  Timer? timer;
+  final AudioPlayer audioPlayer = AudioPlayer();
 
   @override
   void initState() {
     super.initState();
-    _initNotifications();
+    remainingSeconds = widget.workTime;
+    _initSensors();
+    _startMainTimer();
   }
 
-  Future<void> _initNotifications() async {
-    const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const iosInit = DarwinInitializationSettings();
-    const initSettings = InitializationSettings(
-      android: androidInit,
-      iOS: iosInit,
-    );
-    await _notifications.initialize(initSettings);
-    await Permission.notification.request();
-  }
-
-  Future<void> _showNotification(String title, String body) async {
-    const androidDetails = AndroidNotificationDetails(
-      'sit_break_channel',
-      'Sit & Break Reminders',
-      importance: Importance.max,
-      priority: Priority.high,
-      playSound: true,
-    );
-    const iosDetails = DarwinNotificationDetails(playSound: true);
-    const notificationDetails = NotificationDetails(
-      android: androidDetails,
-      iOS: iosDetails,
-    );
-
-    await _notifications.show(0, title, body, notificationDetails);
-  }
-
-  void _startMonitoring() {
-    _magnitudeBuffer.clear();
-    _isMoving = false;
-    setState(() {
-      _isMonitoring = true;
-    });
-
-    _accelSub = accelerometerEventStream(
-      samplingPeriod: SensorInterval.normalInterval,
-    ).listen((event) {
-      final finalMagnitude = sqrt(
-        event.x * event.x + event.y * event.y + event.z * event.z,
-      ) - 9.8;
-
-      _magnitudeBuffer.add(finalMagnitude.abs());
-      if (_magnitudeBuffer.length > _bufferSize) {
-        _magnitudeBuffer.removeAt(0);
-      }
-
-      if (_magnitudeBuffer.length < _bufferSize) return;
-
-      final avgVariation =
-          _magnitudeBuffer.reduce((a, b) => a + b) / _magnitudeBuffer.length;
-      final moving = avgVariation > _stillnessThreshold;
-
-      if (moving != _isMoving) {
-        setState(() {
-          _isMoving = moving;
-        });
-      }
-    });
-
-    _enterSitting();
-  }
-
-  void _stopMonitoring() {
-    _accelSub?.cancel();
-    _accelSub = null;
-    _countdownTimer?.cancel();
-    setState(() {
-      _isMonitoring = false;
-      _state = AppState.idle;
-      _remaining = Duration.zero;
-      _phaseTotal = Duration.zero;
-      _isMoving = false;
-    });
-  }
-
-  void _enterSitting() {
-    final total = Duration(minutes: sitMinutes);
-    setState(() {
-      _state = AppState.sitting;
-      _remaining = total;
-      _phaseTotal = total;
-    });
-    _startCountdown(
-      requireMovement: true,
-      onDone: () {
-        _showNotification(
-          AppLanguageHelper.t('notifyBreakTitle', lang: _lang),
-          AppLanguageHelper.t('notifyBreakBody', lang: _lang),
-        );
-        _enterBreak();
-      },
-    );
-  }
-
-  void _enterBreak() {
-    final total = Duration(minutes: breakMinutes);
-    setState(() {
-      _state = AppState.breakTime;
-      _remaining = total;
-      _phaseTotal = total;
-    });
-    _startCountdown(
-      requireMovement: false,
-      onDone: () {
-        _showNotification(
-          AppLanguageHelper.t('notifyBackTitle', lang: _lang),
-          AppLanguageHelper.t('notifyBackBody', lang: _lang),
-        );
-        if (_isMonitoring) {
-          _enterSitting();
-        }
-      },
-    );
-  }
-
-  void _startCountdown({
-    required bool requireMovement,
-    required VoidCallback onDone,
-  }) {
-    _countdownTimer?.cancel();
-    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (t) {
-      if (requireMovement && !_isMoving) return;
-
+  // مراقبة حركة الهاتف عبر حساس التسارع
+  void _initSensors() {
+    accelerometerSub = accelerometerEvents.listen((event) {
+      // إذا تغيرت الإحداثيات بقيمة محسوسة، فهذا يعني أن الهاتف يتحرك
+      double totalMovement = event.x.abs() + event.y.abs() + event.z.abs();
       setState(() {
-        if (_remaining.inSeconds <= 1) {
-          t.cancel();
-          _remaining = Duration.zero;
-          onDone();
-        } else {
-          _remaining = Duration(seconds: _remaining.inSeconds - 1);
-        }
+        // إذا كان مجموع الحركة يتجاوز عتبة معين، نعتبره يتحرك
+        isPhoneMoving = totalMovement > 11.5; // 9.8 هي الجاذبية الأرضية الثابتة
       });
     });
   }
 
+  void _startMainTimer() {
+    timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      // الشرط الأساسي: هل الهاتف شغال ويتحرك معاً؟
+      // (هنا نفترض أن شاشة التطبيق أمامك تعمل كدلالة على أن الهاتف شغال، ونراقب الحركة بالـ Sensor)
+      bool conditionsMet = isPhoneMoving; 
+
+      if (conditionsMet) {
+        setState(() {
+          isRunning = true;
+          if (remainingSeconds > 0) {
+            remainingSeconds--;
+          } else {
+            _playAlarm();
+            // تبديل بين العمل والاستراحة
+            isWorking = !isWorking;
+            remainingSeconds = isWorking ? widget.workTime : widget.breakTime;
+          }
+        });
+      } else {
+        setState(() {
+          isRunning = false; // المؤقت متوقف لأن الشروط غير متوفرة
+        });
+      }
+    });
+  }
+
+  void _playAlarm() async {
+    // تشغيل الصوت بناءً على النغمة المختارة
+    // يمكنك وضع ملفات صوتية في assets وتشغيلها عبر audioplayers
+    // مثال افتراضي:
+    // await audioPlayer.play(AssetSource('alarm.mp3'));
+  }
+
   @override
   void dispose() {
-    _accelSub?.cancel();
-    _countdownTimer?.cancel();
+    accelerometerSub?.cancel();
+    timer?.cancel();
+    audioPlayer.dispose();
     super.dispose();
-  }
-
-  String _stateLabel() {
-    switch (_state) {
-      case AppState.idle:
-        return AppLanguageHelper.t('stateIdle', lang: _lang);
-      case AppState.sitting:
-        return _isMoving
-            ? AppLanguageHelper.t('stateSittingMoving', lang: _lang)
-            : AppLanguageHelper.t('stateSittingPaused', lang: _lang);
-      case AppState.breakTime:
-        return AppLanguageHelper.t('stateBreak', lang: _lang);
-    }
-  }
-
-  Color _stateColor(ColorScheme scheme) {
-    switch (_state) {
-      case AppState.idle:
-        return scheme.primary;
-      case AppState.sitting:
-        return _isMoving ? Colors.orange : Colors.grey;
-      case AppState.breakTime:
-        return Colors.blueAccent;
-    }
-  }
-
-  String _formatDuration(Duration d) {
-    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
-    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
-    return '$m:$s';
-  }
-
-  double _getProgressValue() {
-    if (_phaseTotal.inSeconds == 0) return 0;
-    return 1 - (_remaining.inSeconds / _phaseTotal.inSeconds);
   }
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Directionality(
-      textDirection: AppLanguageHelper.isRtl(_lang)
-          ? TextDirection.rtl
-          : TextDirection.ltr,
-      child: Scaffold(
-        appBar: AppBar(
-          title: Text(AppLanguageHelper.t('title', lang: _lang)),
-          centerTitle: true,
-          backgroundColor: scheme.primary,
-          foregroundColor: Colors.white,
-          elevation: 0,
-          actions: [
-            _buildLanguageSwitcher(),
+    int minutes = remainingSeconds ~/ 60;
+    int seconds = remainingSeconds % 60;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(isWorking ? 'Work Time / وقت العمل' : 'Break Time / وقت الاستراحة'),
+        backgroundColor: isWorking ? Colors.teal : Colors.orange,
+      ),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // مؤشر حالة الشروط
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: isRunning ? Colors.green.shade100 : Colors.red.shade100,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                isRunning ? '🟢 Timer Running (Conditions Met)' : '🔴 Timer Paused (Move phone / keep active)',
+                style: TextStyle(
+                  color: isRunning ? Colors.green.shade800 : Colors.red.shade800,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            const SizedBox(height: 40),
+            // عرض الوقت بصيغة تنازلية
+            Text(
+              '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}',
+              style: const TextStyle(fontSize: 64, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              isWorking ? 'Focus on your task!' : 'Relax and take a breath!',
+              style: const TextStyle(fontSize: 18, color: Colors.grey),
+            ),
+            const SizedBox(height: 40),
+            // تفاصيل الحالة الحية للمستشعرات للتوضيح
+            Text('Phone Moving: ${isPhoneMoving ? "Yes ✅" : "No ❌"}',
+                style: const TextStyle(fontSize: 16)),
           ],
         ),
-        body: SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
-                        blurRadius: 12,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    children: [
-                      _buildSettingRow(
-                        icon: Icons.event_seat_rounded,
-                        label: AppLanguageHelper.t('sitDuration', lang: _lang),
-                        value: sitMinutes,
-                        onChanged: _isMonitoring
-                            ? null
-                            : (v) => setState(() => sitMinutes = v),
-                      ),
-                      const Divider(height: 24),
-                      _buildSettingRow(
-                        icon: Icons.directions_walk_rounded,
-                        label: AppLanguageHelper.t('breakDuration', lang: _lang),
-                        value: breakMinutes,
-                        onChanged: _isMonitoring
-                            ? null
-                            : (v) => setState(() => breakMinutes = v),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 28),
-                Center(
-                  child: SizedBox(
-                    width: 220,
-                    height: 220,
-                    child: Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        SizedBox(
-                          width: 220,
-                          height: 220,
-                          child: CircularProgressIndicator(
-                            value: _getProgressValue().clamp(0.0, 1.0),
-                            strokeWidth: 10,
-                            backgroundColor: scheme.primary.withOpacity(0.12),
-                            valueColor: AlwaysStoppedAnimation(
-                              _stateColor(scheme),
-                            ),
-                          ),
-                        ),
-                        Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Container(
-                              width: 12,
-                              height: 12,
-                              decoration: BoxDecoration(
-                                color: _stateColor(scheme),
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            Text(
-                              _state == AppState.idle
-                                  ? '--:--'
-                                  : _formatDuration(_remaining),
-                              style: const TextStyle(
-                                fontSize: 40,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 12),
-                              child: Text(
-                                _stateLabel(),
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  color: _stateColor(scheme),
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 28),
-                ElevatedButton.icon(
-                  onPressed:
-                      _isMonitoring ? _stopMonitoring : _startMonitoring,
-                  icon: Icon(
-                    _isMonitoring
-                        ? Icons.stop_rounded
-                        : Icons.play_arrow_rounded,
-                  ),
-                  label: Text(
-                    _isMonitoring
-                        ? AppLanguageHelper.t('stop', lang: _lang)
-                        : AppLanguageHelper.t('start', lang: _lang),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: scheme.primary,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    textStyle: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 18),
-                Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: scheme.primary.withOpacity(0.06),
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Text(
-                    AppLanguageHelper.t('note', lang: _lang),
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Colors.black54,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
       ),
-    );
-  }
-
-  Widget _buildLanguageSwitcher() {
-    return PopupMenuButton<AppLanguage>(
-      icon: const Icon(Icons.language_rounded),
-      onSelected: (v) => setState(() => _lang = v),
-      itemBuilder: (context) => const [
-        PopupMenuItem(
-          value: AppLanguage.ar,
-          child: Text('العربية'),
-        ),
-        PopupMenuItem(
-          value: AppLanguage.en,
-          child: Text('English'),
-        ),
-        PopupMenuItem(
-          value: AppLanguage.fr,
-          child: Text('Français'),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSettingRow({
-    required IconData icon,
-    required String label,
-    required int value,
-    required ValueChanged<int>? onChanged,
-  }) {
-    final scheme = Theme.of(context).colorScheme;
-    return Row(
-      children: [
-        Icon(icon, color: scheme.primary),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(
-            label,
-            style: const TextStyle(fontSize: 15),
-          ),
-        ),
-        IconButton(
-          icon: const Icon(Icons.remove_circle_outline),
-          onPressed: onChanged == null || value <= 1
-              ? null
-              : () => onChanged(value - 1),
-        ),
-        SizedBox(
-          width: 36,
-          child: Text(
-            '$value',
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 16,
-            ),
-          ),
-        ),
-        IconButton(
-          icon: const Icon(Icons.add_circle_outline),
-          onPressed: onChanged == null
-              ? null
-              : () => onChanged(value + 1),
-        ),
-      ],
     );
   }
 }
