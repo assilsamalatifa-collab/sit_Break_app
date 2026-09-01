@@ -1,4 +1,4 @@
-name: Build APK
+Name: Build APK
 
 on:
   push:
@@ -34,3 +34,4 @@ jobs:
         with:
           name: sit-break-app-apk
           path: sit_break_app/build/app/outputs/flutter-apk/app-release.apk
+          include-hidden-files: true
