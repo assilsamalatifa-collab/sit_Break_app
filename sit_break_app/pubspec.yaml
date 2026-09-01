@@ -1,21 +1,7 @@
-name: sit_break_app
-description: تطبيق تذكير بالجلوس والاستراحة مع كشف حركة تلقائي
-publish_to: 'none'
-version: 1.0.0+1
-
-environment:
-  sdk: '>=3.0.0 <4.0.0'
-
 dependencies:
   flutter:
     sdk: flutter
-  sensors_plus: ^5.0.1
-  flutter_local_notifications: ^17.0.0
-  permission_handler: ^11.0.0
-
-dev_dependencies:
-  flutter_test:
-    sdk: flutter
-
-flutter:
-  uses-material-design: true
+  shared_preferences: ^2.2.2 # لحفظ الإعدادات واللغة
+  sensors_plus: ^5.0.1      # لاستشعار حركة الهاتف
+  audioplayers: ^6.0.0      # لتشغيل نغمة المنبه
+  screen_state: ^2.1.0      # لمعرفة إذا كانت شاشة الهاتف شغالة
